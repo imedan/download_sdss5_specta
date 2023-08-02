@@ -9,13 +9,15 @@ high_pm = ((file['GAIA_PMRA'] **2 + file['GAIA_PMDEC'] **2 > 40 **2) &
            (file['GAIA_PMDEC'] != -100.) &
            (file['SURVEY'] == 'MWM'))
 catalogids = list(file['CATALOGID'][high_pm])
+# init the class and when doing so update the spAll file
 spec = SDSSV_Spectra(catalogid=catalogids,
                      update_spAll=True)
+# get the urls for the spectra (not best way to do this)
 urls = spec.get_urls()
 print(len(urls))
-# download first two spectra
+# download first two spectra with rsync
 spec = SDSSV_Spectra(catalogid=[catalogids[0],
                                 catalogids[1]])
 paths = spec.rsync()
-#show paths where spectra are no on your computer
+#show paths where spectra are now on your computer
 print(paths)
