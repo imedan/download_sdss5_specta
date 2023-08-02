@@ -6,17 +6,22 @@ from os.path import exists
 from sdss_access.path.path import AccessError
 
 
-def update_spALL_file(path, access):
+def update_spALL_file(path=None, access=None, run2d='master',
+                      release='sdsswork'):
     """
     update the local spAll file
     """
+    if path is None:
+        path = Path(release=release, preserve_envvars=True)
+        access = Access(release=release)
     access.remote()
-    access.add('spAll', run2d='master')
+    access.add('spAll', run2d=run2d)
     access.set_stream()
     access.commit()
 
 
-def compare_gaia_to_spAll(file):
+def compare_gaia_to_spAll(file, run2d='master',
+                          release='sdsswork'):
     """
     Check which catalogids in gaia
     comparison file have been observed so far
@@ -26,17 +31,23 @@ def compare_gaia_to_spAll(file):
     file: str
         path to gaia file with catalogids
 
+    run2d: str
+        The run version of the pipeline to us
+
+    release: str
+        The release of sdss to use
+
     Returns
     -------
     catalogids: list
         List of catalogids currently observed
     """
-    path = Path(release='sdss5', preserve_envvars=True)
-    spAll_path = path.full('spAll', run2d='master')
+    path = Path(release=release, preserve_envvars=True)
+    spAll_path = path.full('spAll', run2d=run2d)
     if exists(spAll_path):
         spAll = fits.open(spAll_path)[1].data
     else:
-        spAll = fits.open('spAll-master.fits')[1].data
+        spAll = fits.open('spAll-{run2d}.fits'.format(run2d=run2d))[1].data
     gaia = np.genfromtxt(file, dtype=int, skip_header=1,
                          usecols=(0))
     obs = np.isin(gaia,
@@ -63,6 +74,12 @@ class SDSSV_Spectra(object):
         Whether or not to update the downloaded spAll file
         before checking for spectra.
 
+    run2d: str
+        The run version of the pipeline to us
+
+    release: str
+        The release of sdss to use
+
     Attributes
     ----------
     file: np.array
@@ -79,19 +96,21 @@ class SDSSV_Spectra(object):
         requested catalogids.
     """
     def __init__(self, catalogid, instrument='BOSS',
-                 update_spAll=False):
+                 update_spAll=False, run2d='master',
+                 release='sdsswork'):
         self.catalogid = catalogid
-        self.path = Path(release='sdss5', preserve_envvars=True)
-        self.access = Access(release='sdss5')
+        self.path = Path(release=release, preserve_envvars=True)
+        self.access = Access(release=release)
         if update_spAll:
-            update_spALL_file(self.path, self.access)
+            update_spALL_file(path=self.path, access=self.access,
+                              run2d=run2d, release=release)
         # use sas version of spAll if it exists
         if instrument ==  'BOSS':
-            spAll_path = self.path.full('spAll', run2d='master')
+            spAll_path = self.path.full('spAll', run2d=run2d)
             if exists(spAll_path):
                 self.file = fits.open(spAll_path)[1].data
             else:
-                self.file = fits.open('spAll-master.fits')[1].data
+                self.file = fits.open('spAll-{run2d}.fits'.format(run2d=run2d))[1].data
         # get the indexes in the filed where catalogids are
         self.ind_where = []
         # no longer str it seems like?
