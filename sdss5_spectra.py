@@ -1,7 +1,7 @@
 from astropy.io import fits
 from sdss_access.path import Path
 import numpy as np
-from sdss_access import Access
+from sdss_access import Access, RsyncAccess
 from os.path import exists
 from sdss_access.path.path import AccessError
 
@@ -13,7 +13,7 @@ def update_spALL_file(path=None, access=None, run2d='master',
     """
     if path is None:
         path = Path(release=release, preserve_envvars=True)
-        access = Access(release=release)
+        access = RsyncAccess(release=release)
     access.remote()
     access.add('spAll', run2d=run2d)
     access.set_stream()
@@ -100,7 +100,7 @@ class SDSSV_Spectra(object):
                  release='sdsswork'):
         self.catalogid = catalogid
         self.path = Path(release=release, preserve_envvars=True)
-        self.access = Access(release=release)
+        self.access = RsyncAccess(release=release)
         if update_spAll:
             update_spALL_file(path=self.path, access=self.access,
                               run2d=run2d, release=release)
