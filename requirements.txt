@@ -1,4 +1,0 @@
-sdss_access
-numpy
-astropy
-os
