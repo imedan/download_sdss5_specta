@@ -1,5 +1,5 @@
 from astropy.io import fits
-from sdss5_spectra import SDSSV_Spectra
+from sdss5_spectra.sdss5_spectra import SDSSV_Spectra
 import numpy as np
 
 

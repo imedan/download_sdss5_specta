@@ -20,6 +20,21 @@ def update_spALL_file(path=None, access=None, run2d='master',
     access.commit()
 
 
+def update_mwmAllStar_file(path=None, access=None, v_astra='0.5.0',
+                           release='ipl3'):
+    """
+    update the local spAll file
+    """
+    if path is None:
+        path = Path(release=release, preserve_envvars=True)
+        access = RsyncAccess(release=release)
+    access.remote()
+    access.add('mwmAllStar', v_astra=v_astra)
+    access.set_stream()
+    access.commit()
+
+
+
 def compare_gaia_to_spAll(file, run2d='master',
                           release='sdsswork'):
     """
@@ -64,7 +79,8 @@ class SDSSV_Spectra(object):
     ----------
     catalogid: int or list
         Either one or multiple catalogids (in the form of a list)
-        of stars' sepctra you want to download
+        of stars' sepctra you want to download for BOSS spectra.
+        If downloading APOGEE spectra, this should be sdss_id.
 
     instrument: str
         Either 'BOSS' or 'APOGEE'. Depending on instrument,
@@ -79,6 +95,9 @@ class SDSSV_Spectra(object):
 
     release: str
         The release of sdss to use
+
+    v_astra: str
+        Version of astra to use. Needed to get APOGEE spectra.
 
     Attributes
     ----------
@@ -97,20 +116,32 @@ class SDSSV_Spectra(object):
     """
     def __init__(self, catalogid, instrument='BOSS',
                  update_spAll=False, run2d='master',
-                 release='sdsswork'):
+                 release='sdsswork', v_astra='0.5.0'):
         self.catalogid = catalogid
         self.path = Path(release=release, preserve_envvars=True)
         self.access = RsyncAccess(release=release)
+        self.instrument = instrument
+        self.v_astra = v_astra
         if update_spAll:
-            update_spALL_file(path=self.path, access=self.access,
-                              run2d=run2d, release=release)
+            if self.instrument == 'BOSS':
+                update_spALL_file(path=self.path, access=self.access,
+                                  run2d=run2d, release=release)
+            else:
+                update_mwmAllStar_file(path=self.path, access=self.access,
+                                       v_astra=v_astra, release=release)
         # use sas version of spAll if it exists
-        if instrument ==  'BOSS':
+        if self.instrument ==  'BOSS':
             spAll_path = self.path.full('spAll', run2d=run2d)
             if exists(spAll_path):
                 self.file = fits.open(spAll_path)[1].data
             else:
                 self.file = fits.open('spAll-{run2d}.fits'.format(run2d=run2d))[1].data
+        else:
+            mwmAllStar_path = self.path.full('mwmAllStar', v_astra=v_astra)
+            if exists(mwmAllStar_path):
+                self.file = fits.open(mwmAllStar_path)[2].data
+            else:
+                self.file = fits.open('mwmAllStar-{v_astra}.fits'.format(v_astra=v_astra))[2].data
         # get the indexes in the filed where catalogids are
         self.ind_where = []
         # no longer str it seems like?
@@ -118,7 +149,11 @@ class SDSSV_Spectra(object):
             cat_list = [self.catalogid]
         else:
             cat_list = list(self.catalogid)
-        self.ind_where = list(np.where(np.isin(self.file['CATALOGID'],
+        if self.instrument ==  'BOSS':
+            self.file_id_col = 'CATALOGID'
+        else:
+            self.file_id_col = 'sdss_id'
+        self.ind_where = list(np.where(np.isin(self.file[self.file_id_col],
                                                cat_list))[0])
 
     def get_urls(self):
@@ -132,12 +167,18 @@ class SDSSV_Spectra(object):
         """
         urls = []
         for i in self.ind_where:
-            url = self.path.url('specFull',
-                                run2d=self.file['RUN2D'][i],
-                                mjd=self.file['MJD'][i],
-                                fieldid='%06d' % self.file['FIELD'][i],
-                                isplate='',
-                                catalogid=self.file['CATALOGID'][i])
+            if self.instrument ==  'BOSS':
+                url = self.path.url('specFull',
+                                    run2d=self.file['RUN2D'][i],
+                                    mjd=self.file['MJD'][i],
+                                    fieldid='%06d' % self.file['FIELD'][i],
+                                    isplate='',
+                                    catalogid=self.file['CATALOGID'][i])
+            else:
+                url = self.path.url('mwmStar',
+                                     v_astra=self.v_astra,
+                                     sdss_id=self.file['sdss_id'][i],
+                                     component='')
             urls.append(url)
         return urls
 
@@ -154,14 +195,37 @@ class SDSSV_Spectra(object):
         """
         paths = {}
         for i in self.ind_where:
-            path = self.path.full('specFull',
-                                  run2d=self.file['RUN2D'][i],
-                                  mjd=self.file['MJD'][i],
-                                  fieldid='%06d' % self.file['FIELD'][i],
-                                  isplate='',
-                                  catalogid=self.file['CATALOGID'][i])
-            paths[self.file['CATALOGID'][i]] = path
+            if self.instrument ==  'BOSS':
+                path = self.path.full('specFull',
+                                      run2d=self.file['RUN2D'][i],
+                                      mjd=self.file['MJD'][i],
+                                      fieldid='%06d' % self.file['FIELD'][i],
+                                      isplate='',
+                                      catalogid=self.file['CATALOGID'][i])
+            else:
+                path = self.path.full('mwmStar',
+                                      v_astra=self.v_astra,
+                                      sdss_id=self.file['sdss_id'][i],
+                                      component='')
+            paths[self.file[self.file_id_col][i]] = path
         return paths
+
+    def add_spectra_access(self, i):
+        """
+        add the spectrum of interest to the rsync
+        """
+        if self.instrument ==  'BOSS':
+            self.access.add('specFull',
+                            run2d=self.file['RUN2D'][i],
+                            mjd=self.file['MJD'][i],
+                            fieldid='%06d' % self.file['FIELD'][i],
+                            isplate='',
+                            catalogid=self.file['CATALOGID'][i])
+        else:
+            self.access.add('mwmStar',
+                            v_astra=self.v_astra,
+                            sdss_id=self.file['sdss_id'][i],
+                            component='')
 
     def rsync(self, return_paths=True,
               check_duplicate_downloads=True,
@@ -194,21 +258,11 @@ class SDSSV_Spectra(object):
             for i in self.ind_where:
                 # check if copy of spectra already exists
                 if check_duplicate_downloads:
-                    if not exists(paths[self.file['CATALOGID'][i]]):
-                        self.access.add('specFull',
-                                        run2d=self.file['RUN2D'][i],
-                                        mjd=self.file['MJD'][i],
-                                        fieldid='%06d' % self.file['FIELD'][i],
-                                        isplate='',
-                                        catalogid=self.file['CATALOGID'][i])
+                    if not exists(paths[self.file[self.file_id_col][i]]):
+                        self.add_spectra_access(i)
                         spec_added += 1
                 else:
-                    self.access.add('specFull',
-                                    run2d=self.file['RUN2D'][i],
-                                    mjd=self.file['MJD'][i],
-                                    fieldid='%06d' % self.file['FIELD'][i],
-                                    isplate='',
-                                    catalogid=self.file['CATALOGID'][i])
+                    self.add_spectra_access(i)
                     spec_added += 1
             # download all spectra
             if spec_added > 0:
@@ -222,21 +276,11 @@ class SDSSV_Spectra(object):
                 for i in self.ind_where[c: c + chunk_size]:
                     # check if copy of spectra already exists
                     if check_duplicate_downloads:
-                        if not exists(paths[self.file['CATALOGID'][i]]):
-                            self.access.add('specFull',
-                                            run2d=self.file['RUN2D'][i],
-                                            mjd=self.file['MJD'][i],
-                                            fieldid='%06d' % self.file['FIELD'][i],
-                                            isplate='',
-                                            catalogid=self.file['CATALOGID'][i])
+                        if not exists(paths[self.file[self.file_id_col][i]]):
+                            self.add_spectra_access(i)
                             spec_added += 1
                     else:
-                        self.access.add('specFull',
-                                        run2d=self.file['RUN2D'][i],
-                                        mjd=self.file['MJD'][i],
-                                        fieldid='%06d' % self.file['FIELD'][i],
-                                        isplate='',
-                                        catalogid=self.file['CATALOGID'][i])
+                        self.add_spectra_access(i)
                         spec_added += 1
                 # download all spectra
                 if spec_added > 0:
